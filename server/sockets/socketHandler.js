@@ -1,4 +1,7 @@
 const Room = require("../models/Room");
+const mongoose = require("mongoose");
+
+const rooms = {}; // { roomId: [ { socketId, userId } ] }
 
 // Initialize all socket events
 const initSocketHandlers = (io) => {
@@ -12,12 +15,38 @@ const initSocketHandlers = (io) => {
       socket.join(roomId);
       console.log(`Socket ${socket.id} joined room ${roomId}`);
 
+      if (!rooms[roomId]) {
+        rooms[roomId] = [];
+      }
+
+      const exists = rooms[roomId].some((user) => user.socketId === socket.id);
+
+      if (!exists) {
+        rooms[roomId].push({
+          socketId: socket.id,
+          userId: userId || "Guest",
+        });
+      }
+
+      io.to(roomId).emit("participants-update", rooms[roomId]);
+
       try {
-        if (userId) {
+        let room = await Room.findOne({ roomId });
+
+        if (!room) {
+          room = await Room.create({
+            roomId,
+            code: "",
+          });
+        }
+
+        socket.emit("load-code", room.code || "");
+
+        if (userId && mongoose.Types.ObjectId.isValid(userId)) {
           await Room.findOneAndUpdate(
             { roomId },
             { $addToSet: { participants: userId } },
-            { new: true }
+            { returnDocument: "after" }
           );
         }
       } catch (error) {
@@ -26,8 +55,21 @@ const initSocketHandlers = (io) => {
     });
 
     // Code change event: broadcast to room except sender
-    socket.on("code-change", ({ roomId, code }) => {
+    socket.on("code-change", async ({ roomId, code }) => {
       if (!roomId) return;
+
+      try {
+        await Room.findOneAndUpdate(
+          { roomId },
+          { code },
+          {
+            upsert: true,
+          }
+        );
+      } catch (error) {
+        console.error("Error saving room code:", error.message);
+      }
+
       socket.to(roomId).emit("code-change", { roomId, code });
     });
 
@@ -49,10 +91,24 @@ const initSocketHandlers = (io) => {
     });
 
     socket.on("disconnect", () => {
+      Object.keys(rooms).forEach((roomId) => {
+        const updatedUsers = rooms[roomId].filter(
+          (user) => user.socketId !== socket.id
+        );
+
+        if (updatedUsers.length !== rooms[roomId].length) {
+          rooms[roomId] = updatedUsers;
+          io.to(roomId).emit("participants-update", rooms[roomId]);
+        }
+
+        if (rooms[roomId].length === 0) {
+          delete rooms[roomId];
+        }
+      });
+
       console.log("Client disconnected:", socket.id);
     });
   });
 };
 
 module.exports = initSocketHandlers;
-

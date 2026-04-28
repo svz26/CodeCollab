@@ -13,7 +13,6 @@ const roomSchema = new Schema(
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
     },
     participants: [
       {
@@ -21,6 +20,10 @@ const roomSchema = new Schema(
         ref: "User",
       },
     ],
+    code: {
+      type: String,
+      default: "",
+    },
     createdAt: {
       type: Date,
       default: Date.now,
