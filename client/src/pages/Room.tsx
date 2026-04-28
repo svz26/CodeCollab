@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Users, Video, Copy } from "lucide-react";
 import { io, Socket } from "socket.io-client";
@@ -13,6 +13,26 @@ const Room = () => {
   const socketRef = useRef<Socket | null>(null);
   const editorRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const isRemoteUpdateRef = useRef(false);
+  const pendingCodeRef = useRef<string | null>(null);
+  const [participants, setParticipants] = useState<
+    Array<{ socketId: string; userId: string }>
+  >([]);
+
+  const getStoredUserId = () => {
+    const storedUser = localStorage.getItem("user");
+
+    if (!storedUser) {
+      return "Guest";
+    }
+
+    try {
+      const parsedUser = JSON.parse(storedUser);
+      return parsedUser?.id || parsedUser?.email || parsedUser?.name || "Guest";
+    } catch {
+      return storedUser;
+    }
+  };
 
   const handleCopy = () => {
     if (roomId) {
@@ -54,26 +74,58 @@ const Room = () => {
       auth: { token: localStorage.getItem("token") },
     });
 
-    socketRef.current.on("connect", () => {
+    const handleConnect = () => {
       console.log("Connected to server:", socketRef.current?.id);
 
       // Join room after connection
       socketRef.current?.emit("join-room", {
         roomId,
-        userId: localStorage.getItem("user") || "unknown",
+        userId: getStoredUserId(),
       });
       console.log("Joined room:", roomId);
-    });
+    };
 
     // Receive code updates from server
-    socketRef.current.on("code-change", (data: { roomId: string; code: string }) => {
+    const handleCodeChange = (data: { roomId: string; code: string }) => {
       console.log("Received code change:", data.code);
       if (editorRef.current && editorRef.current.getValue() !== data.code) {
+        isRemoteUpdateRef.current = true;
         editorRef.current.setValue(data.code);
       }
-    });
+    };
+
+    const handleLoadCode = (code: string) => {
+      if (!editorRef.current) {
+        pendingCodeRef.current = code;
+        return;
+      }
+
+      if (editorRef.current.getValue() !== code) {
+        isRemoteUpdateRef.current = true;
+        editorRef.current.setValue(code);
+      }
+    };
+
+    const handleParticipantsUpdate = (
+      users: Array<{ socketId: string; userId: string }>
+    ) => {
+      setParticipants(users);
+    };
+
+    socketRef.current.on("connect", handleConnect);
+    socketRef.current.on("code-change", handleCodeChange);
+    socketRef.current.on("load-code", handleLoadCode);
+    socketRef.current.on("participants-update", handleParticipantsUpdate);
+
+    if (socketRef.current.connected) {
+      handleConnect();
+    }
 
     return () => {
+      socketRef.current?.off("connect", handleConnect);
+      socketRef.current?.off("code-change", handleCodeChange);
+      socketRef.current?.off("load-code", handleLoadCode);
+      socketRef.current?.off("participants-update", handleParticipantsUpdate);
       socketRef.current?.disconnect();
     };
   }, [roomId]);
@@ -104,13 +156,27 @@ const Room = () => {
             <Editor
               height="100%"
               defaultLanguage="javascript"
-              defaultValue="// Start coding..."
+              defaultValue=""
               theme="vs-dark"
               onMount={(editor) => {
                 editorRef.current = editor;
 
+                if (
+                  pendingCodeRef.current !== null &&
+                  editor.getValue() !== pendingCodeRef.current
+                ) {
+                  isRemoteUpdateRef.current = true;
+                  editor.setValue(pendingCodeRef.current);
+                }
+                pendingCodeRef.current = null;
+
                 // Emit code changes on typing
                 editor.onDidChangeModelContent(() => {
+                  if (isRemoteUpdateRef.current) {
+                    isRemoteUpdateRef.current = false;
+                    return;
+                  }
+
                   const value = editor.getValue();
                   console.log("Emitting code change:", value);
 
@@ -133,8 +199,20 @@ const Room = () => {
               <h2 className="font-semibold">Participants</h2>
             </div>
             <div className="space-y-2 text-sm text-slate-400">
-              <div className="bg-slate-800 px-3 py-2 rounded-lg">You</div>
-              <div className="bg-slate-800 px-3 py-2 rounded-lg">User 2</div>
+              {participants.length > 0 ? (
+                participants.map((user) => (
+                  <div
+                    key={user.socketId}
+                    className="bg-slate-800 px-3 py-2 rounded-lg"
+                  >
+                    {user.userId}
+                  </div>
+                ))
+              ) : (
+                <div className="bg-slate-800 px-3 py-2 rounded-lg">
+                  Waiting for participants...
+                </div>
+              )}
             </div>
           </div>
 

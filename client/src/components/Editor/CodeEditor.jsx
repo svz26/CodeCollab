@@ -57,5 +57,3 @@ const CodeEditor = ({ roomId }) => {
 };
 
 export default CodeEditor;
-
-
