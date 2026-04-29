@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate} from "react-router-dom";
 import { Users, Video, Copy } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import Editor from "@monaco-editor/react";
@@ -9,7 +9,7 @@ const SOCKET_URL =
 
 const Room = () => {
   const { roomId } = useParams();
-
+  const navigate = useNavigate();
   const socketRef = useRef<Socket | null>(null);
   const editorRef = useRef<any>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -19,6 +19,9 @@ const Room = () => {
   const isRemoteUpdateRef = useRef(false);
   const pendingCodeRef = useRef<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const remoteCursorWidgetsRef = useRef<Map<string, any>>(new Map());
+  const remoteCursorPositionsRef = useRef<Map<string, any>>(new Map());
+
   type Participant = {
     socketId: string;
     userId: string;
@@ -32,8 +35,26 @@ const Room = () => {
     message: string;
     timestamp: Date;
   };
+
+  const getColorFromUserId = (userId: string) => {
+    const colors = [
+      "#FF5733", // red-orange
+      "#33C1FF", // blue
+      "#28C76F", // green
+      "#FF9F43", // orange
+      "#EA5455", // pink-red
+      "#7367F0", // purple
+      "#00CFE8", // cyan
+    ];
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+      hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const getUser = () => {
     const storedUser = localStorage.getItem("user");
@@ -66,6 +87,22 @@ const Room = () => {
       name:user.name
     });
     setChatInput("");
+  };
+
+  const handleLeaveRoom = () => {
+  // 1. Close peer connection (WebRTC)
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    // 2. Stop local media (camera + mic)
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+    // 3. Disconnect socket
+    socketRef.current?.disconnect();
+    // 4. Navigate away (home or dashboard)
+    navigate("/");
   };
 
   const createPeerConnection = () => {
@@ -219,6 +256,19 @@ const Room = () => {
       }
     };
 
+    const handleCursorMove = (data: any) => {
+  const { position, user } = data;
+
+  if (!editorRef.current || !(window as any).monaco) return;
+
+  // ❗ DO NOT render here anymore
+  // Just store target position
+
+  remoteCursorPositionsRef.current.set(user.id, {
+    position,
+    user,
+  });
+};
     // Chat listener
     const handleReceiveMessage = (msg: ChatMessage) => {
       setMessages((prev) => [...prev, msg]);
@@ -236,6 +286,69 @@ const Room = () => {
     socketRef.current.on("ice-candidate", handleIceCandidate);
     socketRef.current.on("peer-disconnected", handlePeerDisconnected);
 
+    socketRef.current.on("cursor-move", handleCursorMove);
+
+    const startCursorAnimation = () => {
+  const monaco = (window as any).monaco;
+  if (!editorRef.current || !monaco) return;
+
+  remoteCursorPositionsRef.current.forEach((data, userId) => {
+  const { user } = data;
+  const color = getColorFromUserId(userId);
+
+  let widget = remoteCursorWidgetsRef.current.get(userId);
+
+  if (!widget) {
+    const el = document.createElement("div");
+
+    el.style.borderLeft = `3px solid ${color}`;
+    el.style.height = "22px";
+    el.style.position = "relative";
+    el.style.overflow = "visible";
+    el.style.zIndex = "999999";
+
+    const label = document.createElement("div");
+    label.innerText = user.name;
+    label.style.position = "absolute";
+    label.style.top = "2px";
+    label.style.left = "8px";
+    label.style.background = color;
+    label.style.color = "white";
+    label.style.fontSize = "10px";
+    label.style.padding = "2px 5px";
+    label.style.borderRadius = "4px";
+    label.style.whiteSpace = "nowrap";
+    label.style.pointerEvents = "none";
+    label.style.display = "block";
+    label.style.zIndex = "999999";
+
+    el.appendChild(label);
+
+    widget = {
+      getId: () => "cursor-" + userId,
+
+      getDomNode: () => el,
+
+      getPosition: () => ({
+        position: remoteCursorPositionsRef.current.get(userId)?.position,
+        preference: [
+          monaco.editor.ContentWidgetPositionPreference.EXACT,
+        ],
+      }),
+    };
+
+    editorRef.current.addContentWidget(widget);
+    remoteCursorWidgetsRef.current.set(userId, widget);
+  } else {
+    editorRef.current.layoutContentWidget(widget);
+  }
+});
+
+  requestAnimationFrame(startCursorAnimation);
+};
+
+startCursorAnimation();
+
     if (socketRef.current.connected) {
       handleConnect();
     }
@@ -250,6 +363,11 @@ const Room = () => {
       socketRef.current?.off("answer", handleAnswer);
       socketRef.current?.off("ice-candidate", handleIceCandidate);
       socketRef.current?.off("peer-disconnected", handlePeerDisconnected);
+
+      socketRef.current?.off("cursor-move", handleCursorMove);
+      remoteCursorWidgetsRef.current.clear();
+      remoteCursorPositionsRef.current.clear();
+
       peerConnectionRef.current?.close();
       socketRef.current?.disconnect();
     };
@@ -266,7 +384,7 @@ const Room = () => {
           <h1 className="text-lg font-semibold">CodeCollab Room</h1>
           <p className="text-xs text-slate-400">Room ID: {roomId}</p>
         </div>
-
+         <div className="flex items-center gap-2">
         <button
           onClick={handleCopy}
           className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition"
@@ -274,6 +392,11 @@ const Room = () => {
           <Copy size={16} />
           Copy ID
         </button>
+        <button
+        onClick={handleLeaveRoom} className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 transition text-white">
+          Leave
+        </button>
+      </div>
       </div>
 
       {/* Main Layout */}
@@ -286,8 +409,10 @@ const Room = () => {
               defaultLanguage="javascript"
               defaultValue=""
               theme="vs-dark"
-              onMount={(editor) => {
+              onMount={(editor,monaco) => {
                 editorRef.current = editor;
+
+                (window as any).monaco = monaco;
 
                 if (
                   pendingCodeRef.current !== null &&
@@ -297,6 +422,16 @@ const Room = () => {
                   editor.setValue(pendingCodeRef.current);
                 }
                 pendingCodeRef.current = null;
+
+                monaco.editor.defineTheme("myTheme", {
+                  base: "vs-dark",
+                  inherit: true,
+                  rules: [],
+                  colors: {
+                    "editorCursor.foreground": "#00FFAA", // your color
+                    },
+                  });
+                  monaco.editor.setTheme("myTheme");
 
                 // Emit code changes on typing
                 editor.onDidChangeModelContent(() => {
@@ -312,6 +447,20 @@ const Room = () => {
                     roomId,
                     code: value,
                   });
+                });
+
+                editor.onDidChangeCursorPosition((e) => {
+                  const position = e.position;
+                  socketRef.current?.emit("cursor-move", {
+                    roomId,
+                    position,
+                    user: getUser(),
+                  });
+                  console.log("Emitting cursor:", position);
+                });
+                editor.updateOptions({
+                  cursorStyle: "line",
+                  cursorWidth: 3,
                 });
               }}
             />
@@ -352,22 +501,24 @@ const Room = () => {
             <h2 className="font-semibold">Video Call</h2>
             </div>
           {/* Remote video — other person */}
-        <div className="relative bg-slate-800 rounded-xl h-36 border border-slate-700 overflow-hidden">
-          <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover"/>
+        <div className={`relative bg-slate-800 rounded-xl border border-slate-700 overflow-hidden transition-all duration-300 ${ isChatOpen ? "h-24" : "h-36"}`}>
+          <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-contain"/>
           <span className="absolute bottom-1 left-2 text-xs text-slate-500">Remote</span>
           </div>
         {/* Local video — your preview */}
-        <div className="relative bg-slate-800 rounded-xl h-24 border border-slate-700 overflow-hidden mt-2">
-          <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover"/>
+        <div className={`relative bg-slate-800 rounded-xl border border-slate-700 overflow-hidden mt-2 transition-all duration-300 ${ isChatOpen ? "h-16 w-32" : "h-28" }`}>
+          <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-contain"/>
           <span className="absolute bottom-1 left-2 text-xs text-slate-500">You</span>
         </div>
         </div>
           {/* Chat Section */}
           <div className="flex flex-col flex-1 min-h-0">
-            <div className="flex items-center gap-2 mb-3">
+            <div onClick={() => setIsChatOpen(!isChatOpen)} className="flex justify-between items-center mb-3 cursor-pointer">
               <h2 className="font-semibold text-sm">💬 Chat</h2>
+              <span className="text-xs">{isChatOpen ? "▲" : "▼"}</span>
               </div>
             {/* Messages */}
+            <div className={`${isChatOpen ? "flex flex-col flex-1" : "hidden"}`}>
             <div className="flex-1 overflow-y-auto space-y-2 text-sm text-slate-300 pr-1">
               {messages.length === 0 ? (
                 <div className="text-slate-500 text-xs">No messages yet...</div>) : (messages.map((msg, i) => (
@@ -378,6 +529,7 @@ const Room = () => {
                   ))
                   )}
                   <div ref={chatEndRef} />
+                  </div>
                   </div>
               {/* Input */}
               <div className="flex gap-2 mt-3">

@@ -82,6 +82,28 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
+.remote-cursor {
+  border-left: 3px solid red;
+  margin-left: -2px;
+  height: 20px;
+  display: inline-block;
+}
+
+
+.remote-cursor-label {
+  background: red;
+  color: white;
+  font-size: 10px;
+  padding: 2px 4px;
+  margin-left: 4px;
+  border-radius: 4px;
+}
+.monaco-editor .overflow-guard,
+.monaco-editor .view-overlays,
+.monaco-editor .contentWidgets {
+  overflow: visible !important;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
