@@ -89,6 +89,11 @@ const initSocketHandlers = (io) => {
     socket.on("offer", ({ roomId, offer }) => {
       socket.to(roomId).emit("offer", offer);
     });
+
+    socket.on("cursor-move", (data) => {
+      console.log("Cursor move received on server:", data);
+      socket.to(data.roomId).emit("cursor-move", data);
+    });
     
     socket.on("answer", ({ roomId, answer }) => {
       socket.to(roomId).emit("answer", answer);
