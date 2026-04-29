@@ -18,7 +18,7 @@ const server = http.createServer(app);
 */
 const io = new Server(server, {
   cors: {
-    origin: "*", 
+    origin: "https://code-collab-brown.vercel.app", 
     methods: ["GET", "POST"],
   },
 });
@@ -29,7 +29,10 @@ initSocketHandlers(io);
 /*
    Core Middleware
  */
-app.use(cors());
+app.use(cors({
+    origin: "https://code-collab-brown.vercel.app",
+    credentials: true,
+  }));
 app.use(express.json());
 
 /*
