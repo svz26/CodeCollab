@@ -9,7 +9,7 @@ const initSocketHandlers = (io) => {
     console.log("New client connected:", socket.id);
 
     // Join a room by roomId
-    socket.on("join-room", async ({ roomId, userId }) => {
+    socket.on("join-room", async ({ roomId, userId ,name}) => {
       if (!roomId) return;
 
       socket.join(roomId);
@@ -24,7 +24,8 @@ const initSocketHandlers = (io) => {
       if (!exists) {
         rooms[roomId].push({
           socketId: socket.id,
-          userId: userId || "Guest",
+          userId,
+          name,
         });
       }
 
@@ -54,6 +55,17 @@ const initSocketHandlers = (io) => {
       }
     });
 
+    // REAL-TIME CHAT — add this inside io.on("connection", (socket) => { ... })
+    socket.on("send-message", ({ roomId, message, userId,name }) => {
+      const msgData = {
+        message,
+        userId,
+        name,
+        timestamp: new Date(),
+      };
+      io.to(roomId).emit("receive-message", msgData);
+    });
+
     // Code change event: broadcast to room except sender
     socket.on("code-change", async ({ roomId, code }) => {
       if (!roomId) return;
@@ -74,20 +86,16 @@ const initSocketHandlers = (io) => {
     });
 
     // WebRTC signaling: forward offer/answer/candidates to specific socket
-    socket.on("sending-signal", ({ targetSocketId, signal }) => {
-      if (!targetSocketId || !signal) return;
-      io.to(targetSocketId).emit("receiving-signal", {
-        from: socket.id,
-        signal,
-      });
+    socket.on("offer", ({ roomId, offer }) => {
+      socket.to(roomId).emit("offer", offer);
     });
-
-    socket.on("receiving-signal", ({ targetSocketId, signal }) => {
-      if (!targetSocketId || !signal) return;
-      io.to(targetSocketId).emit("receiving-signal", {
-        from: socket.id,
-        signal,
-      });
+    
+    socket.on("answer", ({ roomId, answer }) => {
+      socket.to(roomId).emit("answer", answer);
+    });
+    
+    socket.on("ice-candidate", ({ roomId, candidate }) => {
+      socket.to(roomId).emit("ice-candidate", candidate);
     });
 
     socket.on("disconnect", () => {
@@ -99,6 +107,7 @@ const initSocketHandlers = (io) => {
         if (updatedUsers.length !== rooms[roomId].length) {
           rooms[roomId] = updatedUsers;
           io.to(roomId).emit("participants-update", rooms[roomId]);
+          io.to(roomId).emit("peer-disconnected");
         }
 
         if (rooms[roomId].length === 0) {
