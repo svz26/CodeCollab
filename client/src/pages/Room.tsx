@@ -106,14 +106,14 @@ const Room = () => {
   };
 
   const createPeerConnection = () => {
-  // Close any existing connection to avoid duplicates
+  // ✅ Reuse existing connection instead of closing it
   if (peerConnectionRef.current) {
-      return peerConnectionRef.current;
+    return peerConnectionRef.current;
   }
 
   const pc = new RTCPeerConnection({
     iceServers: [
-      {        
+      {
         urls: "stun:stun.relay.metered.ca:80",
       },
       {
@@ -139,40 +139,37 @@ const Room = () => {
     ],
   });
 
-  // Add local tracks so the other peer gets our stream
   localStreamRef.current?.getTracks().forEach((track) => {
     pc.addTrack(track, localStreamRef.current!);
   });
 
-  // Send our ICE candidates to the other peer via socket
   pc.onicecandidate = (event) => {
+    console.log("ICE GENERATED:", event.candidate);
+
     if (event.candidate) {
       socketRef.current?.emit("ice-candidate", {
         roomId,
         candidate: event.candidate,
       });
     }
-      console.log("ICE GENERATED:", event.candidate);
-
   };
 
-  // When remote stream arrives, show it in the remote video element
   pc.ontrack = (event) => {
     console.log("ONTRACK FIRED:", event.streams);
+
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = event.streams[0];
-          console.log("Remote video srcObject set");
-    }
-    else{      
-      console.log("Remote video ref is null");
+      console.log("Remote video srcObject set");
     }
   };
+
   pc.onconnectionstatechange = () => {
-  console.log("🔗 CONNECTION STATE:", pc.connectionState);
-};
-pc.oniceconnectionstatechange = () => {
-  console.log("❄️ ICE STATE:", pc.iceConnectionState);
-};
+    console.log("CONNECTION STATE:", pc.connectionState);
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    console.log("ICE STATE:", pc.iceConnectionState);
+  };
 
   peerConnectionRef.current = pc;
   return pc;
@@ -250,45 +247,65 @@ pc.oniceconnectionstatechange = () => {
       users: Array<{ socketId: string; userId: string; name: string }>
     ) => {
       setParticipants(users);
-      // Second user to join initiates the call
-      if (users.length >= 2) {
-        const mySocketId = socketRef.current?.id;
-        const sortedUsers = [...users].sort((a, b) =>
-          a.socketId.localeCompare(b.socketId)
-      );
-      const isInitiator = sortedUsers[0].socketId === mySocketId;
-      if (isInitiator) {
-        setTimeout(async () => {
-          console.log("🚀 CREATING OFFER");
-          const pc = createPeerConnection();
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socketRef.current?.emit("offer", { roomId, offer });
-          console.log("Offer sent");
-          console.log("🎯 INITIATOR CHECK:", isInitiator);
-        }, 500);
-      }
+
+  console.log("Participants update:", users);
+  console.log("My socket:", socketRef.current?.id);
+
+  if (users.length >= 2) {
+    const mySocketId = socketRef.current?.id;
+
+    const sortedUsers = [...users].sort((a, b) =>
+      a.socketId.localeCompare(b.socketId)
+    );
+
+    const isInitiator = sortedUsers[0].socketId === mySocketId;
+
+    console.log("INITIATOR CHECK:", isInitiator);
+
+    if (isInitiator) {
+      setTimeout(async () => {
+        console.log("CREATING OFFER");
+
+        const pc = createPeerConnection();
+        const offer = await pc.createOffer();
+
+        await pc.setLocalDescription(offer);
+
+        socketRef.current?.emit("offer", { roomId, offer });
+
+        console.log("Offer sent");
+      }, 500);
     }
-    console.log("Participants update:", users);
-    console.log("My socket:", socketRef.current?.id);
-  };
+  }
+};
 
     const handleOffer = async (offer: RTCSessionDescriptionInit) => {
-      const pc = createPeerConnection();
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socketRef.current?.emit("answer", { roomId, answer });
-        console.log("OFFER RECEIVED");
+  console.log("OFFER RECEIVED");
 
-    };
-    const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
-      await peerConnectionRef.current?.setRemoteDescription(
-        new RTCSessionDescription(answer)
-      );
-        console.log("ANSWER RECEIVED");
+  const pc = createPeerConnection();
 
-    };
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  socketRef.current?.emit("answer", { roomId, answer });
+
+  console.log("Answer sent");
+};
+
+   const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
+  console.log("ANSWER RECEIVED");
+
+  const pc = peerConnectionRef.current;
+
+  if (!pc) {
+    console.error("No peer connection found while receiving answer");
+    return;
+  }
+
+  await pc.setRemoteDescription(new RTCSessionDescription(answer));
+};
     const handleIceCandidate = async (candidate: RTCIceCandidateInit) => {
       try {
         await peerConnectionRef.current?.addIceCandidate(
