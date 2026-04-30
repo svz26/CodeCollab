@@ -138,6 +138,8 @@ const Room = () => {
       },
     ],
   });
+  console.log("Local stream:", localStreamRef.current);
+  console.log("Local tracks:", localStreamRef.current?.getTracks());
 
   localStreamRef.current?.getTracks().forEach((track) => {
     pc.addTrack(track, localStreamRef.current!);
@@ -265,6 +267,10 @@ const Room = () => {
     if (isInitiator) {
       setTimeout(async () => {
         console.log("CREATING OFFER");
+        if (!localStreamRef.current) {
+          console.log("Local stream not ready, delaying offer");
+          return;
+        }
 
         const pc = createPeerConnection();
         const offer = await pc.createOffer();
