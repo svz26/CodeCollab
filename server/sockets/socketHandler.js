@@ -88,6 +88,8 @@ const initSocketHandlers = (io) => {
     // WebRTC signaling: forward offer/answer/candidates to specific socket
     socket.on("offer", ({ roomId, offer }) => {
       socket.to(roomId).emit("offer", offer);
+        console.log("🟢 BACKEND RECEIVED OFFER:", roomId);
+
     });
 
     socket.on("cursor-move", (data) => {
@@ -97,10 +99,14 @@ const initSocketHandlers = (io) => {
     
     socket.on("answer", ({ roomId, answer }) => {
       socket.to(roomId).emit("answer", answer);
+        console.log("🟢 BACKEND RECEIVED ANSWER:", roomId);
+
     });
     
     socket.on("ice-candidate", ({ roomId, candidate }) => {
       socket.to(roomId).emit("ice-candidate", candidate);
+        console.log("🟢 BACKEND RECEIVED ICE:", roomId);
+
     });
 
     socket.on("disconnect", () => {

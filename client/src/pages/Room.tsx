@@ -153,6 +153,8 @@ const Room = () => {
         candidate: event.candidate,
       });
     }
+      console.log("ICE GENERATED:", event.candidate);
+
   };
 
   // When remote stream arrives, show it in the remote video element
@@ -160,7 +162,15 @@ const Room = () => {
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = event.streams[0];
     }
+      console.log("ONTRACK FIRED:", event.streams);
+
   };
+  pc.onconnectionstatechange = () => {
+  console.log("🔗 CONNECTION STATE:", pc.connectionState);
+};
+pc.oniceconnectionstatechange = () => {
+  console.log("❄️ ICE STATE:", pc.iceConnectionState);
+};
 
   peerConnectionRef.current = pc;
   return pc;
@@ -202,8 +212,7 @@ const Room = () => {
     });
 
     const handleConnect = () => {
-      console.log("Connected to server:", socketRef.current?.id);
-
+      console.log("✅ CONNECTED:", socketRef.current?.id);
       // Join room after connection
       const user = getUser();
       socketRef.current?.emit("join-room", {
@@ -248,14 +257,18 @@ const Room = () => {
       const isInitiator = sortedUsers[0].socketId === mySocketId;
       if (isInitiator) {
         setTimeout(async () => {
+          console.log("🚀 CREATING OFFER");
           const pc = createPeerConnection();
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           socketRef.current?.emit("offer", { roomId, offer });
           console.log("Offer sent");
+          console.log("🎯 INITIATOR CHECK:", isInitiator);
         }, 500);
       }
     }
+    console.log("Participants update:", users);
+    console.log("My socket:", socketRef.current?.id);
   };
 
     const handleOffer = async (offer: RTCSessionDescriptionInit) => {
@@ -264,11 +277,15 @@ const Room = () => {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       socketRef.current?.emit("answer", { roomId, answer });
+        console.log("OFFER RECEIVED");
+
     };
     const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
       await peerConnectionRef.current?.setRemoteDescription(
         new RTCSessionDescription(answer)
       );
+        console.log("ANSWER RECEIVED");
+
     };
     const handleIceCandidate = async (candidate: RTCIceCandidateInit) => {
       try {
@@ -278,6 +295,8 @@ const Room = () => {
       } catch (err) {
         console.error("Error adding ICE candidate:", err);
       }
+        console.log("ICE RECEIVED");
+
     };
     const handlePeerDisconnected = () => {
       peerConnectionRef.current?.close();
