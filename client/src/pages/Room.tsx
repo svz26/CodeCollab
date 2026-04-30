@@ -140,6 +140,10 @@ const Room = () => {
   });
   console.log("Local stream:", localStreamRef.current);
   console.log("Local tracks:", localStreamRef.current?.getTracks());
+  if (!localStreamRef.current) {
+    console.error("Cannot create peer connection: local stream missing");
+    throw new Error("Local stream missing");
+  }
 
   localStreamRef.current?.getTracks().forEach((track) => {
     pc.addTrack(track, localStreamRef.current!);
@@ -245,6 +249,16 @@ const Room = () => {
       }
     };
 
+    const waitForLocalStream = async () => {
+      let attempts = 0;
+      while (!localStreamRef.current && attempts < 20) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        attempts++;
+      }
+
+  return localStreamRef.current;
+};
+
     const handleParticipantsUpdate = async (
       users: Array<{ socketId: string; userId: string; name: string }>
     ) => {
@@ -265,23 +279,29 @@ const Room = () => {
     console.log("INITIATOR CHECK:", isInitiator);
 
     if (isInitiator) {
-      setTimeout(async () => {
-        console.log("CREATING OFFER");
-        if (!localStreamRef.current) {
-          console.log("Local stream not ready, delaying offer");
-          return;
-        }
+  setTimeout(async () => {
+    console.log("CREATING OFFER");
 
-        const pc = createPeerConnection();
-        const offer = await pc.createOffer();
+    const stream = await waitForLocalStream();
 
-        await pc.setLocalDescription(offer);
-
-        socketRef.current?.emit("offer", { roomId, offer });
-
-        console.log("Offer sent");
-      }, 500);
+    if (!stream) {
+      console.error("Local stream still not ready after waiting");
+      return;
     }
+
+    console.log("Local stream ready:", stream);
+    console.log("Local tracks:", stream.getTracks());
+
+    const pc = createPeerConnection();
+    const offer = await pc.createOffer();
+
+    await pc.setLocalDescription(offer);
+
+    socketRef.current?.emit("offer", { roomId, offer });
+
+    console.log("Offer sent");
+  }, 500);
+}
   }
 };
 
