@@ -159,11 +159,14 @@ const Room = () => {
 
   // When remote stream arrives, show it in the remote video element
   pc.ontrack = (event) => {
+    console.log("ONTRACK FIRED:", event.streams);
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = event.streams[0];
+          console.log("Remote video srcObject set");
     }
-      console.log("ONTRACK FIRED:", event.streams);
-
+    else{      
+      console.log("Remote video ref is null");
+    }
   };
   pc.onconnectionstatechange = () => {
   console.log("🔗 CONNECTION STATE:", pc.connectionState);
@@ -551,7 +554,7 @@ startCursorAnimation();
             </div>
           {/* Remote video — other person */}
         <div className={`relative bg-slate-800 rounded-xl border border-slate-700 overflow-hidden transition-all duration-300 ${ isChatOpen ? "h-24" : "h-36"}`}>
-          <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-contain"/>
+          <video ref={remoteVideoRef} autoPlay playsInline muted className="w-full h-full object-contain"/>
           <span className="absolute bottom-1 left-2 text-xs text-slate-500">Remote</span>
           </div>
         {/* Local video — your preview */}
