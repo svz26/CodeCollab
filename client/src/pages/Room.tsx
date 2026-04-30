@@ -195,7 +195,10 @@ const Room = () => {
 
     // Connect to backend
     socketRef.current = io(SOCKET_URL, {
-      auth: { token: localStorage.getItem("token") },
+      transports: ["websocket"],   // 🔥 IMPORTANT
+      auth: {
+        token: localStorage.getItem("token"),
+      },
     });
 
     const handleConnect = () => {
@@ -237,19 +240,23 @@ const Room = () => {
     ) => {
       setParticipants(users);
       // Second user to join initiates the call
-      if (users.length === 2) {
-         const mySocketId = socketRef.current?.id;
-         const isInitiator = users[users.length - 1].socketId === mySocketId;
-         if (isInitiator) {
-          setTimeout(async () => {
-            const pc = createPeerConnection();
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socketRef.current?.emit("offer", { roomId, offer });
-          }, 500);
-        }
+      if (users.length >= 2) {
+        const mySocketId = socketRef.current?.id;
+        const sortedUsers = [...users].sort((a, b) =>
+          a.socketId.localeCompare(b.socketId)
+      );
+      const isInitiator = sortedUsers[0].socketId === mySocketId;
+      if (isInitiator) {
+        setTimeout(async () => {
+          const pc = createPeerConnection();
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socketRef.current?.emit("offer", { roomId, offer });
+          console.log("Offer sent");
+        }, 500);
       }
-    };
+    }
+  };
 
     const handleOffer = async (offer: RTCSessionDescriptionInit) => {
       const pc = createPeerConnection();
