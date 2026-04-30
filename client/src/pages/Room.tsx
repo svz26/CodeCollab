@@ -108,8 +108,7 @@ const Room = () => {
   const createPeerConnection = () => {
   // Close any existing connection to avoid duplicates
   if (peerConnectionRef.current) {
-    peerConnectionRef.current.close();
-    peerConnectionRef.current = null;
+      return peerConnectionRef.current;
   }
 
   const pc = new RTCPeerConnection({
