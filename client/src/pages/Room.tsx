@@ -141,9 +141,9 @@ const Room = () => {
   console.log("Local stream:", localStreamRef.current);
   console.log("Local tracks:", localStreamRef.current?.getTracks());
   if (!localStreamRef.current) {
-    console.error("Cannot create peer connection: local stream missing");
-    throw new Error("Local stream missing");
-  }
+  console.error("Cannot create peer connection: local stream missing");
+  return peerConnectionRef.current!;
+}
 
   localStreamRef.current?.getTracks().forEach((track) => {
     pc.addTrack(track, localStreamRef.current!);
@@ -306,32 +306,30 @@ const Room = () => {
 };
 
     const handleOffer = async (offer: RTCSessionDescriptionInit) => {
-  console.log("OFFER RECEIVED");
-
-  const pc = createPeerConnection();
-
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-
-  socketRef.current?.emit("answer", { roomId, answer });
-
-  console.log("Answer sent");
-};
-
-   const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
-  console.log("ANSWER RECEIVED");
-
-  const pc = peerConnectionRef.current;
-
-  if (!pc) {
-    console.error("No peer connection found while receiving answer");
-    return;
-  }
-
-  await pc.setRemoteDescription(new RTCSessionDescription(answer));
-};
+      console.log("OFFER RECEIVED");
+      const stream = await waitForLocalStream();
+      if (!stream) {
+        console.error("Local stream not ready while handling offer");
+        return;
+      }
+      console.log("Local stream ready for answer:", stream);
+      console.log("Local tracks for answer:", stream.getTracks());
+      const pc = createPeerConnection();
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socketRef.current?.emit("answer", { roomId, answer });
+      console.log("Answer sent");
+    };
+    const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
+      console.log("ANSWER RECEIVED");
+      const pc = peerConnectionRef.current;
+      if (!pc) {
+        console.error("No peer connection found while receiving answer");
+        return;
+      }
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    };
     const handleIceCandidate = async (candidate: RTCIceCandidateInit) => {
       try {
         await peerConnectionRef.current?.addIceCandidate(
