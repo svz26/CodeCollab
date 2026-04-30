@@ -113,7 +113,31 @@ const Room = () => {
   }
 
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    iceServers: [
+      {        
+        urls: "stun:stun.relay.metered.ca:80",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:80",
+        username: "c36c455341f634075e4a47c4",
+        credential: "91Liu0FPQpxlM2cP",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:80?transport=tcp",
+        username: "c36c455341f634075e4a47c4",
+        credential: "91Liu0FPQpxlM2cP",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:443",
+        username: "c36c455341f634075e4a47c4",
+        credential: "91Liu0FPQpxlM2cP",
+      },
+      {
+        urls: "turns:global.relay.metered.ca:443?transport=tcp",
+        username: "c36c455341f634075e4a47c4",
+        credential: "91Liu0FPQpxlM2cP",
+      },
+    ],
   });
 
   // Add local tracks so the other peer gets our stream
@@ -492,7 +516,7 @@ startCursorAnimation();
               )}
             </div>
           </div>
-          
+
           {/* Video Section */}
         <div>
           <div className="flex items-center gap-2 mb-3">
